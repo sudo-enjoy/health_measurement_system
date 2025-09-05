@@ -1,1 +1,1 @@
-This project developed by Hareta Zouzou
+this projec is health measurement system
