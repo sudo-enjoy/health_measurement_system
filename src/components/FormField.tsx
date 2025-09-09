@@ -5,11 +5,12 @@ interface FormFieldProps {
   children: React.ReactNode;
   required?: boolean;
   description?: string;
+  onFocus?: () => void;
 }
 
-export default function FormField({ label, children, required = false, description }: FormFieldProps) {
+export default function FormField({ label, children, required = false, description, onFocus }: FormFieldProps) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" onFocus={onFocus}>
       <label className="block text-sm font-medium text-gray-700">
         {label}
         {required && <span className="text-red-500 ml-1">*</span>}

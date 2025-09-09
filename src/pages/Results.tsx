@@ -1,15 +1,17 @@
 ﻿import React, { useEffect, useState } from "react";
-import { Download, RotateCcw, AlertTriangle, CheckCircle, Info, Loader2, Brain, Calendar, Target, Shield } from "lucide-react";
+import { Download, RotateCcw, AlertTriangle, CheckCircle, Info, Loader2, Brain, Target, Shield } from "lucide-react";
 import Layout from "../components/Layout";
 import Card from "../components/Card";
 import Button from "../components/Button";
 import { useAssessment } from "../contexts/AssessmentContext";
 import { generatePDF } from "../utils/pdfGenerator";
-import { analyzeWithGPT, GPTAnalysisResult } from "../utils/gptAnalysis";
+import RadarChart from "../components/RadarChart";
+
+import { analyzeWithGPT } from "../utils/gptAnalysis";
 
 export default function Results() {
   const { state, dispatch } = useAssessment();
-  const { results, gptAnalysis, isLoading, error } = state;
+  const { results, gptAnalysis, isLoading, error, assessmentType } = state;
   const [showGPTAnalysis, setShowGPTAnalysis] = useState(false);
 
   useEffect(() => {
@@ -25,6 +27,7 @@ export default function Results() {
     dispatch({ type: "SET_ERROR", payload: null });
     
     try {
+      console.log("Calling GPT analysis with:", { data: state.data, results });
       const analysis = await analyzeWithGPT(state.data as any, results);
       dispatch({ type: "SET_GPT_ANALYSIS", payload: analysis });
     } catch (err) {
@@ -136,6 +139,20 @@ export default function Results() {
             )}
           </div>
 
+          {/* Radar Chart for Fall Risk */}
+          {results.fallRiskScores && (assessmentType === "fall" || assessmentType === "both") && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">転倒リスク評価チャート</h3>
+              <div className="bg-white p-4 rounded-lg border">
+                <RadarChart scores={results.fallRiskScores} className="w-full" />
+              </div>
+              <div className="mt-4 text-sm text-gray-600">
+                <p><strong>黒線：</strong>実際の測定結果に基づいた評価（1～5点）</p>
+                <p><strong>赤線：</strong>自己評価アンケートによる自己認識のスコア（1～5点）</p>
+              </div>
+            </div>
+          )}
+
           {/* GPT Analysis Toggle */}
           {gptAnalysis && (
             <div className="border-t pt-4">
@@ -153,287 +170,78 @@ export default function Results() {
 
         {/* GPT Analysis Results */}
         {gptAnalysis && showGPTAnalysis && (
-          <>
-            {/* Enhanced Risk Assessment */}
-            <Card>
-              <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-2">
-                <Brain className="w-6 h-6 text-blue-600" />
-                <span>AI詳細分析</span>
-              </h2>
-              
-              <div className="grid md:grid-cols-3 gap-4 mb-6">
-                {gptAnalysis.riskAssessment.fallRisk && (
-                  <div className={`p-4 rounded-lg ${getRiskColor(gptAnalysis.riskAssessment.fallRisk)}`}>
-                    <div className="flex items-center space-x-2">
-                      {React.createElement(getRiskIcon(gptAnalysis.riskAssessment.fallRisk), { className: "w-5 h-5" })}
-                      <h3 className="font-semibold">転倒リスク（AI分析）</h3>
-                    </div>
-                    <p className="text-2xl font-bold mt-2">{getRiskText(gptAnalysis.riskAssessment.fallRisk)}</p>
-                  </div>
-                )}
-                
-                {gptAnalysis.riskAssessment.lowBackPainRisk && (
-                  <div className={`p-4 rounded-lg ${getRiskColor(gptAnalysis.riskAssessment.lowBackPainRisk)}`}>
-                    <div className="flex items-center space-x-2">
-                      {React.createElement(getRiskIcon(gptAnalysis.riskAssessment.lowBackPainRisk), { className: "w-5 h-5" })}
-                      <h3 className="font-semibold">腰痛リスク（AI分析）</h3>
-                    </div>
-                    <p className="text-2xl font-bold mt-2">{getRiskText(gptAnalysis.riskAssessment.lowBackPainRisk)}</p>
-                  </div>
-                )}
-
-                <div className={`p-4 rounded-lg ${getRiskColor(gptAnalysis.riskAssessment.overallRisk)}`}>
-                  <div className="flex items-center space-x-2">
-                    {React.createElement(getRiskIcon(gptAnalysis.riskAssessment.overallRisk), { className: "w-5 h-5" })}
-                    <h3 className="font-semibold">総合リスク</h3>
-                  </div>
-                  <p className="text-2xl font-bold mt-2">{getRiskText(gptAnalysis.riskAssessment.overallRisk)}</p>
-                </div>
-              </div>
-            </Card>
-
-            {/* Detailed Analysis */}
-            <Card>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">詳細分析</h2>
-              
-              <div className="grid md:grid-cols-3 gap-6">
-                <div>
-                  <h3 className="font-semibold text-green-700 mb-3 flex items-center space-x-2">
-                    <CheckCircle className="w-5 h-5" />
-                    <span>強み</span>
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-2">
+              <Brain className="w-6 h-6 text-blue-600" />
+              <span>AI詳細分析</span>
+            </h2>
+            
+            {/* Evaluation Comments */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {gptAnalysis.evaluationComments.fallRiskComment && (
+                <Card>
+                  <h3 className="text-lg font-semibold text-blue-800 mb-3 flex items-center">
+                    <Shield className="w-5 h-5 mr-2" />
+                    転倒リスク評価
                   </h3>
-                  <ul className="space-y-2">
-                    {gptAnalysis.detailedAnalysis.strengths.map((strength, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
-                        <span className="text-sm text-gray-700">{strength}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-orange-700 mb-3 flex items-center space-x-2">
-                    <AlertTriangle className="w-5 h-5" />
-                    <span>懸念点</span>
-                  </h3>
-                  <ul className="space-y-2">
-                    {gptAnalysis.detailedAnalysis.concerns.map((concern, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-orange-500 rounded-full mt-2"></div>
-                        <span className="text-sm text-gray-700">{concern}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-blue-700 mb-3 flex items-center space-x-2">
-                    <Info className="w-5 h-5" />
-                    <span>重要な発見</span>
-                  </h3>
-                  <ul className="space-y-2">
-                    {gptAnalysis.detailedAnalysis.keyFindings.map((finding, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
-                        <span className="text-sm text-gray-700">{finding}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </Card>
-
-            {/* Personalized Recommendations */}
-            <Card>
-              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center space-x-2">
-                <Target className="w-5 h-5 text-blue-600" />
-                <span>個別化推奨事項</span>
-              </h2>
-              
-              <div className="space-y-6">
-                <div>
-                  <h3 className="font-semibold text-red-700 mb-3">即座に実行すべき事項</h3>
-                  <div className="space-y-2">
-                    {gptAnalysis.personalizedRecommendations.immediate.map((rec, index) => (
-                      <div key={index} className="flex items-start space-x-3 p-3 bg-red-50 rounded-lg">
-                        <div className="w-6 h-6 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-sm font-medium mt-0.5">
-                          {index + 1}
-                        </div>
-                        <p className="text-gray-700 flex-1">{rec}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-orange-700 mb-3">短期間で実行すべき事項</h3>
-                  <div className="space-y-2">
-                    {gptAnalysis.personalizedRecommendations.shortTerm.map((rec, index) => (
-                      <div key={index} className="flex items-start space-x-3 p-3 bg-orange-50 rounded-lg">
-                        <div className="w-6 h-6 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-sm font-medium mt-0.5">
-                          {index + 1}
-                        </div>
-                        <p className="text-gray-700 flex-1">{rec}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-green-700 mb-3">長期間で実行すべき事項</h3>
-                  <div className="space-y-2">
-                    {gptAnalysis.personalizedRecommendations.longTerm.map((rec, index) => (
-                      <div key={index} className="flex items-start space-x-3 p-3 bg-green-50 rounded-lg">
-                        <div className="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm font-medium mt-0.5">
-                          {index + 1}
-                        </div>
-                        <p className="text-gray-700 flex-1">{rec}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {/* Exercise Plan */}
-            <Card>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">個別化エクササイズプラン</h2>
-              
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold text-blue-700 mb-3">毎日のエクササイズ</h3>
-                  <ul className="space-y-2">
-                    {gptAnalysis.exercisePlan.daily.map((exercise, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium mt-0.5">
-                          {index + 1}
-                        </div>
-                        <span className="text-sm text-gray-700">{exercise}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-purple-700 mb-3">週次のエクササイズ</h3>
-                  <ul className="space-y-2">
-                    {gptAnalysis.exercisePlan.weekly.map((exercise, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <div className="w-5 h-5 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xs font-medium mt-0.5">
-                          {index + 1}
-                        </div>
-                        <span className="text-sm text-gray-700">{exercise}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              {gptAnalysis.exercisePlan.precautions.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="font-semibold text-red-700 mb-3 flex items-center space-x-2">
-                    <Shield className="w-5 h-5" />
-                    <span>注意事項</span>
-                  </h3>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <ul className="space-y-2">
-                      {gptAnalysis.exercisePlan.precautions.map((precaution, index) => (
-                        <li key={index} className="flex items-start space-x-2">
-                          <div className="w-2 h-2 bg-red-500 rounded-full mt-2"></div>
-                          <span className="text-sm text-red-800">{precaution}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+                  <p className="text-gray-700 leading-relaxed">
+                    {gptAnalysis.evaluationComments.fallRiskComment}
+                  </p>
+                </Card>
               )}
-            </Card>
-
-            {/* Lifestyle Modifications */}
-            <Card>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">ライフスタイル改善提案</h2>
               
-              <div className="grid md:grid-cols-3 gap-6">
-                <div>
-                  <h3 className="font-semibold text-blue-700 mb-3">職場での改善</h3>
-                  <ul className="space-y-2">
-                    {gptAnalysis.lifestyleModifications.workplace.map((mod, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
-                        <span className="text-sm text-gray-700">{mod}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              {gptAnalysis.evaluationComments.lowBackPainRiskComment && (
+                <Card>
+                  <h3 className="text-lg font-semibold text-orange-800 mb-3 flex items-center">
+                    <Target className="w-5 h-5 mr-2" />
+                    腰痛リスク評価
+                  </h3>
+                  <p className="text-gray-700 leading-relaxed">
+                    {gptAnalysis.evaluationComments.lowBackPainRiskComment}
+                  </p>
+                </Card>
+              )}
+            </div>
 
-                <div>
-                  <h3 className="font-semibold text-green-700 mb-3">日常生活での改善</h3>
-                  <ul className="space-y-2">
-                    {gptAnalysis.lifestyleModifications.daily.map((mod, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
-                        <span className="text-sm text-gray-700">{mod}</span>
-                      </li>
+            {/* Exercise Guidance */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {gptAnalysis.exerciseGuidance.fallRiskExercises && gptAnalysis.exerciseGuidance.fallRiskExercises.length > 0 && (
+                <Card>
+                  <h3 className="text-lg font-semibold text-blue-800 mb-4 flex items-center">
+                    <Target className="w-5 h-5 mr-2" />
+                    転倒リスク対策運動
+                  </h3>
+                  <div className="space-y-4">
+                    {gptAnalysis.exerciseGuidance.fallRiskExercises.map((exercise, index) => (
+                      <div key={index} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <h4 className="font-semibold text-blue-800 mb-2">{exercise.name}</h4>
+                        <p className="text-sm text-blue-700 mb-2"><strong>目的:</strong> {exercise.purpose}</p>
+                        <p className="text-sm text-gray-700">{exercise.instructions}</p>
+                      </div>
                     ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-purple-700 mb-3">予防策</h3>
-                  <ul className="space-y-2">
-                    {gptAnalysis.lifestyleModifications.preventive.map((mod, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full mt-2"></div>
-                        <span className="text-sm text-gray-700">{mod}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </Card>
-
-            {/* Follow-up Schedule */}
-            <Card>
-              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center space-x-2">
-                <Calendar className="w-5 h-5 text-blue-600" />
-                <span>フォローアップ計画</span>
-              </h2>
-              
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold text-blue-700 mb-3">次回評価</h3>
-                  <p className="text-gray-700">{gptAnalysis.followUpSchedule.nextAssessment}</p>
-                  
-                  <h3 className="font-semibold text-green-700 mb-3 mt-4">マイルストーン</h3>
-                  <ul className="space-y-2">
-                    {gptAnalysis.followUpSchedule.milestones.map((milestone, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <div className="w-5 h-5 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-medium mt-0.5">
-                          {index + 1}
-                        </div>
-                        <span className="text-sm text-gray-700">{milestone}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-red-700 mb-3">注意すべき症状</h3>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <ul className="space-y-2">
-                      {gptAnalysis.followUpSchedule.warningSigns.map((sign, index) => (
-                        <li key={index} className="flex items-start space-x-2">
-                          <div className="w-2 h-2 bg-red-500 rounded-full mt-2"></div>
-                          <span className="text-sm text-red-800">{sign}</span>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
-                </div>
-              </div>
-            </Card>
-          </>
+                </Card>
+              )}
+              
+              {gptAnalysis.exerciseGuidance.lowBackPainExercises && gptAnalysis.exerciseGuidance.lowBackPainExercises.length > 0 && (
+                <Card>
+                  <h3 className="text-lg font-semibold text-orange-800 mb-4 flex items-center">
+                    <Target className="w-5 h-5 mr-2" />
+                    腰痛リスク対策運動
+                  </h3>
+                  <div className="space-y-4">
+                    {gptAnalysis.exerciseGuidance.lowBackPainExercises.map((exercise, index) => (
+                      <div key={index} className="p-4 bg-orange-50 rounded-lg border border-orange-200">
+                        <h4 className="font-semibold text-orange-800 mb-2">{exercise.name}</h4>
+                        <p className="text-sm text-orange-700 mb-2"><strong>目的:</strong> {exercise.purpose}</p>
+                        <p className="text-sm text-gray-700">{exercise.instructions}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Basic Results (when GPT analysis is not shown) */}
@@ -462,7 +270,7 @@ export default function Results() {
                   <div key={index} className="border rounded-lg p-4">
                     <div className="flex items-start space-x-4">
                       <img
-                        src={exercise.illustration}
+                        src={exercise.illustration || "/images/state1.png"}
                         alt={exercise.name}
                         className="w-32 h-32 object-cover rounded-lg"
                       />

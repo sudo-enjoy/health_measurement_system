@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Heart, Users, Activity } from 'lucide-react';
 import Layout from '../components/Layout';
 import Card from '../components/Card';
@@ -8,7 +7,6 @@ import { useAssessment } from '../contexts/AssessmentContext';
 
 export default function Home() {
   const { dispatch } = useAssessment();
-  const navigate = useNavigate();
 
   const assessmentOptions = [
     {
@@ -39,7 +37,6 @@ export default function Home() {
 
   const handleSelectAssessment = (type: 'fall' | 'lowback' | 'both') => {
     dispatch({ type: 'SET_ASSESSMENT_TYPE', payload: type });
-    navigate('/user-info');
   };
 
   return (

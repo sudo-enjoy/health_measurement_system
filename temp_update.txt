@@ -1,0 +1,2 @@
+    dispatch({ type: 'SET_RESULTS', payload: results });
+    navigate('/results');
