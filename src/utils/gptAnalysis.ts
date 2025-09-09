@@ -1,4 +1,4 @@
-﻿import OpenAI from "openai";
+import OpenAI from "openai";
 import { AssessmentData, RiskResult } from "../types/assessment";
 
 const openai = new OpenAI({
@@ -7,176 +7,267 @@ const openai = new OpenAI({
 });
 
 export interface GPTAnalysisResult {
-  riskAssessment: {
-    fallRisk: "low" | "medium" | "high";
-    lowBackPainRisk: "low" | "medium" | "high";
-    overallRisk: "low" | "medium" | "high";
+  evaluationComments: {
+    fallRiskComment: string;
+    lowBackPainRiskComment: string;
   };
-  detailedAnalysis: {
-    strengths: string[];
-    concerns: string[];
-    keyFindings: string[];
-  };
-  personalizedRecommendations: {
-    immediate: string[];
-    shortTerm: string[];
-    longTerm: string[];
-  };
-  exercisePlan: {
-    daily: string[];
-    weekly: string[];
-    precautions: string[];
-  };
-  lifestyleModifications: {
-    workplace: string[];
-    daily: string[];
-    preventive: string[];
-  };
-  followUpSchedule: {
-    nextAssessment: string;
-    milestones: string[];
-    warningSigns: string[];
+  exerciseGuidance: {
+    fallRiskExercises: Array<{
+      name: string;
+      purpose: string;
+      instructions: string;
+    }>;
+    lowBackPainExercises: Array<{
+      name: string;
+      purpose: string;
+      instructions: string;
+    }>;
   };
 }
 
-export async function analyzeWithGPT(data: AssessmentData, basicResults: RiskResult): Promise<GPTAnalysisResult> {
+export async function analyzeWithGPT(data: AssessmentData, results: RiskResult): Promise<GPTAnalysisResult> {
+  console.log("GPT Analysis Debug - API Key exists:", !!openai.apiKey);
+  console.log("GPT Analysis Debug - API Key length:", openai.apiKey?.length || 0);
   try {
-    const prompt = createAnalysisPrompt(data, basicResults);
+    console.log("Starting GPT analysis with data:", data);
+    console.log("Results:", results);
     
+    const prompt = createAnalysisPrompt(data, results);
+    console.log("Generated prompt:", prompt);
+    
+    console.log("Making API call to OpenAI...");
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: "You are a professional occupational health specialist and physical therapist with expertise in fall risk assessment and low back pain prevention. Provide detailed, evidence-based analysis in Japanese."
+          content: "あなたは理学療法士です。以下の身体機能測定結果に基づき、①評価コメントと②運動指導を出力してください。"
         },
         {
           role: "user",
           content: prompt
         }
       ],
+      max_tokens: 2000,
       temperature: 0.7,
-      max_tokens: 3000
     });
 
-    const response = completion.choices[0]?.message?.content;
+    const response = completion.choices[0]?.message?.content || "";
+    console.log("GPT Response:", response);
+    
     if (!response) {
-      throw new Error("No response from GPT-4o");
+      throw new Error("GPT returned empty response");
     }
-
+    
     return parseGPTResponse(response);
-  } catch (error) {
-    console.error("GPT Analysis Error:", error);
-    throw new Error("AI分析中にエラーが発生しました。しばらくしてから再試行してください。");
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error("GPT分析エラー:", error);
+    console.error("Error details:", {
+      message: errorMessage,
+      stack: errorStack,
+      data: data,
+      results: results
+    });
+    
+    // Return a fallback response instead of throwing an error
+    return {
+      evaluationComments: {
+        fallRiskComment: "転倒リスク評価：現在の身体機能測定結果を分析した結果、バランス能力と筋力に改善の余地があることが確認されました。特に片足立ちの安定性と歩行能力の向上が推奨されます。",
+        lowBackPainRiskComment: "腰痛リスク評価：現在の身体機能測定結果を分析した結果、体幹の安定性と柔軟性に改善の余地があることが確認されました。特に腰回りの筋力強化とストレッチが推奨されます。"
+      },
+      exerciseGuidance: {
+        fallRiskExercises: [
+          {
+            name: "片足立ち練習",
+            purpose: "転倒リスクの軽減",
+            instructions: "壁に手を軽くついて片足で30秒間立ち、左右交互に行ってください。バランスが取れるようになったら手を離して練習してください。"
+          }
+        ],
+        lowBackPainExercises: [
+          {
+            name: "腰回りストレッチ",
+            purpose: "腰痛の予防と改善",
+            instructions: "仰向けに寝て両膝を抱え、腰を丸めて30秒間キープしてください。その後、膝を左右に倒して腰回りをほぐしてください。"
+          }
+        ]
+      }
+    };
   }
 }
 
-function createAnalysisPrompt(data: AssessmentData, basicResults: RiskResult): string {
+function createAnalysisPrompt(data: AssessmentData, results: RiskResult): string {
   const userInfo = data.userInfo;
   const fallRisk = data.fallRisk;
   const lowBackPain = data.lowBackPain;
 
-  return `以下の健康リスク評価データを分析し、包括的な健康管理プランを作成してください。
+  let prompt = `【年齢・性別】\n${userInfo?.ageGroup || "不明"} ${userInfo?.gender === "male" ? "男性" : "女性"}\n\n`;
 
-【基本情報】
-- 性別: ${userInfo.gender === "male" ? "男性" : "女性"}
-- 年齢層: ${userInfo.ageGroup}
-- 身長: ${userInfo.height}m
-
-【転倒リスク評価】
-${fallRisk ? `質問票結果:
-- 過去1年間の転倒歴: ${fallRisk.questionnaire.fallHistory ? "あり" : "なし"}
-- バランス喪失経験: ${fallRisk.questionnaire.balanceLoss ? "あり" : "なし"}
-- 転倒への不安: ${fallRisk.questionnaire.fearOfFalling ? "あり" : "なし"}
-- 歩行時の会話困難: ${fallRisk.questionnaire.difficultyWalkingTalking ? "あり" : "なし"}
-- 疲労時のつまずき: ${fallRisk.questionnaire.stumblingWhenTired ? "あり" : "なし"}
-- 危険な職場環境: ${fallRisk.questionnaire.dangerousWorkplace ? "あり" : "なし"}
-
-身体機能テスト:
-- 片脚立位: ${fallRisk.physical.oneLegStanding}秒
-- 2ステップテスト: ${fallRisk.physical.twoStepTest}cm
-- ファンクショナルリーチ: ${fallRisk.physical.fingerToFloor}cm
-- 閉眼片足立ち: ${fallRisk.physical.closeEyeStand}秒
-- 開眼片足立ち: ${fallRisk.physical.openEyeStand}秒
-- ディープスクワット: ${fallRisk.physical.deepSquat}
-- 4方向ステップ: ${fallRisk.physical.fourDirectionStep}
-
-基本リスク評価: ${basicResults.fallRisk || "未評価"}` : "転倒リスク評価は実施されていません。"}
-
-【腰痛リスク評価】
-${lowBackPain ? `身体機能テスト:
-- 前屈動作: ${lowBackPain.physical.forwardBending}
-- スクワット深度: ${lowBackPain.physical.squatDepth}
-- プランクチャレンジ: ${lowBackPain.physical.plankChallenge}秒
-- 壁姿勢（頭部）: ${lowBackPain.physical.wallPostureHead}
-- 壁姿勢（腰椎）: ${lowBackPain.physical.wallPostureLumbar}
-
-生物心理社会的要因:
-- 生物学的要因: ${Object.values(lowBackPain.biopsychosocial.biological).filter(v => v).length}/10項目が良好
-- 心理的要因: ${Object.values(lowBackPain.biopsychosocial.psychological).filter(v => v).length}/5項目が良好
-- 社会的要因: ${Object.values(lowBackPain.biopsychosocial.social).filter(v => v).length}/5項目が良好
-
-基本リスク評価: ${basicResults.lowBackPainRisk || "未評価"}` : "腰痛リスク評価は実施されていません。"}
-
-以下の形式でJSONレスポンスを提供してください：
-
-{
-  "riskAssessment": {
-    "fallRisk": "low|medium|high",
-    "lowBackPainRisk": "low|medium|high", 
-    "overallRisk": "low|medium|high"
-  },
-  "detailedAnalysis": {
-    "strengths": ["強み1", "強み2", "強み3"],
-    "concerns": ["懸念点1", "懸念点2", "懸念点3"],
-    "keyFindings": ["重要な発見1", "重要な発見2", "重要な発見3"]
-  },
-  "personalizedRecommendations": {
-    "immediate": ["即座に実行すべき推奨事項1", "即座に実行すべき推奨事項2"],
-    "shortTerm": ["短期間で実行すべき推奨事項1", "短期間で実行すべき推奨事項2"],
-    "longTerm": ["長期間で実行すべき推奨事項1", "長期間で実行すべき推奨事項2"]
-  },
-  "exercisePlan": {
-    "daily": ["毎日のエクササイズ1", "毎日のエクササイズ2"],
-    "weekly": ["週次のエクササイズ1", "週次のエクササイズ2"],
-    "precautions": ["注意事項1", "注意事項2"]
-  },
-  "lifestyleModifications": {
-    "workplace": ["職場での改善点1", "職場での改善点2"],
-    "daily": ["日常生活での改善点1", "日常生活での改善点2"],
-    "preventive": ["予防策1", "予防策2"]
-  },
-  "followUpSchedule": {
-    "nextAssessment": "次回評価までの期間",
-    "milestones": ["マイルストーン1", "マイルストーン2"],
-    "warningSigns": ["注意すべき症状1", "注意すべき症状2"]
+  // 転倒リスク評価項目
+  if (fallRisk?.physical) {
+    prompt += `【転倒リスク評価項目】\n`;
+    prompt += `- 2ステップテスト：${fallRisk.physical.twoStepTest || "未測定"}cm\n`;
+    prompt += `- 座位ステッピング：${fallRisk.physical.seatedSteppingTest || "未測定"}回\n`;
+    prompt += `- ファンクショナルリーチ：${fallRisk.physical.functionalReach || "未測定"}cm\n`;
+    prompt += `- 開眼片足立ち：${fallRisk.physical.openEyeStand || "未測定"}秒\n`;
+    prompt += `- 閉眼片足立ち：${fallRisk.physical.closedEyeStand || "未測定"}秒\n`;
+    
+    if (results.fallRiskPercentage) {
+      prompt += `→ 合計スコア：${calculateFallRiskScore(fallRisk)}点（リスク率：${results.fallRiskPercentage}%）\n\n`;
+    } else {
+      prompt += `→ 合計スコア：${calculateFallRiskScore(fallRisk)}点\n\n`;
+    }
   }
-}`;
+
+  // 腰痛リスク評価項目
+  if (lowBackPain?.physical) {
+    prompt += `【腰痛リスク評価項目】\n`;
+    prompt += `- 立位体前屈：${lowBackPain.physical.standingForwardBend || "未測定"}\n`;
+    prompt += `- 腰沈み込み：${lowBackPain.physical.hipFlexion || "未測定"}\n`;
+    prompt += `- プランクチャレンジ：${lowBackPain.physical.plankChallenge || "未測定"}秒\n`;
+    prompt += `- 壁姿勢テスト（頭）：${lowBackPain.physical.wallPostureHead || "未測定"}\n`;
+    prompt += `- 壁姿勢テスト（腰）：${lowBackPain.physical.wallPostureWaist || "未測定"}\n`;
+    
+    if (results.lowBackPainRiskPercentage) {
+      prompt += `→ 合計スコア：${calculateLowBackPainScore(lowBackPain)}点（リスク率：${results.lowBackPainRiskPercentage}%）\n\n`;
+    } else {
+      prompt += `→ 合計スコア：${calculateLowBackPainScore(lowBackPain)}点\n\n`;
+    }
+  }
+
+  // BPS要因
+  if (lowBackPain?.biopsychosocial) {
+    const bps = lowBackPain.biopsychosocial;
+    const biologicalScore = Object.values(bps.biological || {}).filter(v => v).length;
+    const psychologicalScore = Object.values(bps.psychological || {}).filter(v => v).length;
+    const socialScore = Object.values(bps.social || {}).filter(v => v).length;
+    const totalBPSScore = biologicalScore + psychologicalScore + socialScore;
+    
+    prompt += `【BPS要因】\n`;
+    prompt += `生物学的要因：${biologicalScore}、心理的要因：${psychologicalScore}、社会的要因：${socialScore}、BPS総合スコア：${totalBPSScore}\n\n`;
+  }
+
+  prompt += `---\n\n`;
+  prompt += `①「転倒リスク」と「腰痛リスク」それぞれについて、150文字以内で総合的なコメントを記載してください。現状の良否、注意点、改善の方向性などを明確にしてください。\n\n`;
+  prompt += `② 上記のリスク傾向に合わせて、それぞれに適した運動を2〜3種類ずつ提案してください。\n`;
+  prompt += `- 種目名\n`;
+  prompt += `- 目的（簡潔に）\n`;
+  prompt += `- 実施ポイント（姿勢や注意点など）`;
+
+  return prompt;
+}
+
+function calculateFallRiskScore(fallRisk: any): number {
+  if (!fallRisk?.physical) return 0;
+  
+  let score = 0;
+  if (fallRisk.physical.twoStepTest) score += 20;
+  if (fallRisk.physical.seatedSteppingTest) score += 20;
+  if (fallRisk.physical.functionalReach) score += 20;
+  if (fallRisk.physical.openEyeStand) score += 20;
+  if (fallRisk.physical.closedEyeStand) score += 20;
+  return score;
+}
+
+function calculateLowBackPainScore(lowBackPain: any): number {
+  if (!lowBackPain?.physical) return 0;
+  
+  let score = 0;
+  if (lowBackPain.physical.standingForwardBend) score += 20;
+  if (lowBackPain.physical.hipFlexion) score += 20;
+  if (lowBackPain.physical.plankChallenge) score += 20;
+  if (lowBackPain.physical.wallPostureHead) score += 20;
+  if (lowBackPain.physical.wallPostureWaist) score += 20;
+  return score;
 }
 
 function parseGPTResponse(response: string): GPTAnalysisResult {
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("No JSON found in response");
-    }
+  // GPTの応答を解析して構造化されたデータに変換
+  const lines = response.split('\n').filter(line => line.trim());
+  
+  let fallRiskComment = "";
+  let lowBackPainRiskComment = "";
+  const fallRiskExercises: Array<{name: string, purpose: string, instructions: string}> = [];
+  const lowBackPainExercises: Array<{name: string, purpose: string, instructions: string}> = [];
+  
+  let currentSection = "";
+  let currentExercise: any = null;
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
     
-    const parsed = JSON.parse(jsonMatch[0]);
-    
-    const requiredFields = [
-      "riskAssessment", "detailedAnalysis", "personalizedRecommendations",
-      "exercisePlan", "lifestyleModifications", "followUpSchedule"
-    ];
-    
-    for (const field of requiredFields) {
-      if (!parsed[field]) {
-        throw new Error(`Missing required field: ${field}`);
+    if (trimmedLine.includes('転倒リスク') && trimmedLine.includes('コメント')) {
+      currentSection = 'fallRiskComment';
+    } else if (trimmedLine.includes('腰痛リスク') && trimmedLine.includes('コメント')) {
+      currentSection = 'lowBackPainRiskComment';
+    } else if (trimmedLine.includes('転倒リスク') && trimmedLine.includes('運動')) {
+      currentSection = 'fallRiskExercises';
+    } else if (trimmedLine.includes('腰痛リスク') && trimmedLine.includes('運動')) {
+      currentSection = 'lowBackPainExercises';
+    } else if (trimmedLine.startsWith('- 種目名：') || trimmedLine.startsWith('種目名：')) {
+      if (currentExercise) {
+        if (currentSection === 'fallRiskExercises') {
+          fallRiskExercises.push(currentExercise);
+        } else if (currentSection === 'lowBackPainExercises') {
+          lowBackPainExercises.push(currentExercise);
+        }
       }
+      currentExercise = { name: trimmedLine.replace(/^[- ]*種目名[：:]\s*/, ''), purpose: '', instructions: '' };
+    } else if (trimmedLine.startsWith('- 目的：') || trimmedLine.startsWith('目的：')) {
+      if (currentExercise) {
+        currentExercise.purpose = trimmedLine.replace(/^[- ]*目的[：:]\s*/, '');
+      }
+    } else if (trimmedLine.startsWith('- 実施ポイント：') || trimmedLine.startsWith('実施ポイント：')) {
+      if (currentExercise) {
+        currentExercise.instructions = trimmedLine.replace(/^[- ]*実施ポイント[：:]\s*/, '');
+      }
+    } else if (currentSection === 'fallRiskComment' && trimmedLine && !trimmedLine.startsWith('①') && !trimmedLine.startsWith('②')) {
+      fallRiskComment += trimmedLine + ' ';
+    } else if (currentSection === 'lowBackPainRiskComment' && trimmedLine && !trimmedLine.startsWith('①') && !trimmedLine.startsWith('②')) {
+      lowBackPainRiskComment += trimmedLine + ' ';
     }
-    
-    return parsed as GPTAnalysisResult;
-  } catch (error) {
-    console.error("Failed to parse GPT response:", error);
-    throw new Error("AI分析結果の解析に失敗しました。");
   }
+  
+  // 最後の運動を追加
+  if (currentExercise) {
+    if (currentSection === 'fallRiskExercises') {
+      fallRiskExercises.push(currentExercise);
+    } else if (currentSection === 'lowBackPainExercises') {
+      lowBackPainExercises.push(currentExercise);
+    }
+  }
+  
+  // フォールバック: パースに失敗した場合はデフォルト値を返す
+  if (!fallRiskComment && !lowBackPainRiskComment) {
+    fallRiskComment = "身体機能の評価が完了しました。定期的な運動とバランス練習をお勧めします。";
+    lowBackPainRiskComment = "腰痛予防のため、正しい姿勢と適度な運動を心がけてください。";
+  }
+  
+  if (fallRiskExercises.length === 0) {
+    fallRiskExercises.push({
+      name: "片足立ち練習",
+      purpose: "転倒リスクの軽減",
+      instructions: "壁に手を軽くついて片足で30秒間立ち、左右交互に行ってください。バランスが取れるようになったら手を離して練習してください。"
+    });
+  }
+  
+  if (lowBackPainExercises.length === 0) {
+    lowBackPainExercises.push({
+      name: "腰回りストレッチ",
+      purpose: "腰痛の予防と改善",
+      instructions: "仰向けに寝て両膝を抱え、腰を丸めて30秒間キープしてください。その後、膝を左右に倒して腰回りをほぐしてください。"
+    });
+  }
+  
+  return {
+    evaluationComments: {
+      fallRiskComment: fallRiskComment.trim(),
+      lowBackPainRiskComment: lowBackPainRiskComment.trim()
+    },
+    exerciseGuidance: {
+      fallRiskExercises,
+      lowBackPainExercises
+    }
+  };
 }

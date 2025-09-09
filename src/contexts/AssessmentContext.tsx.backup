@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useReducer, ReactNode } from "react";
+﻿import React, { createContext, useContext, useReducer, ReactNode } from "react";
 import { AssessmentData, RiskResult } from "../types/assessment";
 import { GPTAnalysisResult } from "../utils/gptAnalysis";
 
 interface AssessmentState {
+  currentStep: string;
   assessmentType: "fall" | "lowback" | "both" | null;
   data: Partial<AssessmentData>;
   results: RiskResult | null;
@@ -13,6 +14,7 @@ interface AssessmentState {
 
 type AssessmentAction =
   | { type: "SET_ASSESSMENT_TYPE"; payload: "fall" | "lowback" | "both" }
+  | { type: "SET_STEP"; payload: string }
   | { type: "UPDATE_DATA"; payload: Partial<AssessmentData> }
   | { type: "SET_RESULTS"; payload: RiskResult }
   | { type: "SET_GPT_ANALYSIS"; payload: GPTAnalysisResult }
@@ -21,6 +23,7 @@ type AssessmentAction =
   | { type: "RESET" };
 
 const initialState: AssessmentState = {
+  currentStep: "home",
   assessmentType: null,
   data: {},
   results: null,
@@ -37,11 +40,13 @@ const AssessmentContext = createContext<{
 function assessmentReducer(state: AssessmentState, action: AssessmentAction): AssessmentState {
   switch (action.type) {
     case "SET_ASSESSMENT_TYPE":
-      return { ...state, assessmentType: action.payload };
+      return { ...state, assessmentType: action.payload, currentStep: "userInfo" };
+    case "SET_STEP":
+      return { ...state, currentStep: action.payload };
     case "UPDATE_DATA":
       return { ...state, data: { ...state.data, ...action.payload } };
     case "SET_RESULTS":
-      return { ...state, results: action.payload };
+      return { ...state, results: action.payload, currentStep: "results" };
     case "SET_GPT_ANALYSIS":
       return { ...state, gptAnalysis: action.payload };
     case "SET_LOADING":
