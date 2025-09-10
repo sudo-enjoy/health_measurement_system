@@ -1,0 +1,243 @@
+import jsPDF from "jspdf";
+import { AssessmentData, RiskResult } from "../types/assessment";
+import { GPTAnalysisResult } from "./gptAnalysis";
+
+export async function generatePDF(data: AssessmentData, results: RiskResult, gptAnalysis?: GPTAnalysisResult | null): Promise<void> {
+  try {
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    
+    // Page dimensions
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const margin = 20;
+    const contentWidth = pageWidth - (margin * 2);
+    let currentY = margin;
+    
+    // Helper function to add text with automatic page breaks
+    const addText = (text: string, fontSize: number = 12, isBold: boolean = false, color: string = '#000000') => {
+      pdf.setFontSize(fontSize);
+      pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
+      pdf.setTextColor(color);
+      
+      const lines = pdf.splitTextToSize(text, contentWidth);
+      
+      for (const line of lines) {
+        if (currentY + fontSize > pageHeight - margin) {
+          pdf.addPage();
+          currentY = margin;
+        }
+        pdf.text(line, margin, currentY);
+        currentY += fontSize * 0.4; // Line spacing
+      }
+      currentY += fontSize * 0.2; // Paragraph spacing
+    };
+    
+    // Helper function to add a section header
+    const addSectionHeader = (title: string) => {
+      if (currentY > margin + 10) {
+        currentY += 10; // Add space before new section
+      }
+      if (currentY + 20 > pageHeight - margin) {
+        pdf.addPage();
+        currentY = margin;
+      }
+      
+      // Draw line under header
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.5);
+      pdf.line(margin, currentY + 5, pageWidth - margin, currentY + 5);
+      
+      addText(title, 16, true, '#333333');
+      currentY += 5;
+    };
+    
+    // Helper function to add a subsection
+    const addSubsection = (title: string, color: string = '#666666') => {
+      if (currentY + 15 > pageHeight - margin) {
+        pdf.addPage();
+        currentY = margin;
+      }
+      addText(title, 14, true, color);
+    };
+    
+    // Helper function to add a numbered list item
+    const addNumberedItem = (text: string, number: number, indent: number = 0) => {
+      if (currentY + 12 > pageHeight - margin) {
+        pdf.addPage();
+        currentY = margin;
+      }
+      
+      const indentText = '  '.repeat(indent) + `${number}. `;
+      addText(indentText + text, 11);
+    };
+    
+    // Title
+    pdf.setFontSize(20);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor('#000000');
+    
+    if (currentY + 25 > pageHeight - margin) {
+      pdf.addPage();
+      currentY = margin;
+    }
+    
+    pdf.text('健康リスク評価レポート', pageWidth / 2, currentY, { align: 'center' });
+    currentY += 15;
+    
+    if (gptAnalysis) {
+      pdf.setFontSize(12);
+      pdf.setTextColor('#0066cc');
+      pdf.text('AI詳細分析付き', pageWidth / 2, currentY, { align: 'center' });
+      currentY += 10;
+    }
+    
+    currentY += 15;
+    
+    // Basic Information
+    addSectionHeader('基本情報');
+    addText(`性別: ${data.userInfo!.gender === "male" ? "男性" : "女性"}`, 12);
+    addText(`年齢層: ${data.userInfo!.ageGroup}`, 12);
+    addText(`身長: ${data.userInfo!.height}m`, 12);
+    
+    // Risk Assessment Summary
+    addSectionHeader('リスク評価サマリー');
+    
+    if (gptAnalysis) {
+      const fallRiskText = results.fallRisk === "high" ? "高リスク" : 
+                          results.fallRisk === "medium" ? "中リスク" : "低リスク";
+      const backPainText = results.lowBackPainRisk === "high" ? "高リスク" : 
+                          results.lowBackPainRisk === "medium" ? "中リスク" : "低リスク";
+      
+      addText(`転倒リスク（AI分析）: ${fallRiskText}`, 12, true);
+      addText(`腰痛リスク（AI分析）: ${backPainText}`, 12, true);
+    } else {
+      if (results.fallRisk) {
+        const fallRiskText = results.fallRisk === "high" ? "高リスク" : 
+                            results.fallRisk === "medium" ? "中リスク" : "低リスク";
+        let fallText = `転倒リスク: ${fallRiskText}`;
+        if (results.fallRiskPercentage) {
+          fallText += ` (${results.fallRiskPercentage}%)`;
+        }
+        addText(fallText, 12, true);
+        if (results.fallRiskComment) {
+          addText(results.fallRiskComment, 11, false, '#666666');
+        }
+      }
+      
+      if (results.lowBackPainRisk) {
+        const backPainText = results.lowBackPainRisk === "high" ? "高リスク" : 
+                            results.lowBackPainRisk === "medium" ? "中リスク" : "低リスク";
+        let backText = `腰痛リスク: ${backPainText}`;
+        if (results.lowBackPainRiskPercentage) {
+          backText += ` (${results.lowBackPainRiskPercentage}%)`;
+        }
+        addText(backText, 12, true);
+        if (results.lowBackPainRiskComment) {
+          addText(results.lowBackPainRiskComment, 11, false, '#666666');
+        }
+      }
+    }
+    
+    // Fall Risk Scores (if available)
+    if (results.fallRiskScores) {
+      addSectionHeader('転倒リスク詳細スコア');
+      
+      const categories = [
+        { name: "歩行能力・筋力", physical: results.fallRiskScores.physical.walkingAbility, self: results.fallRiskScores.selfAssessment.walkingAbility },
+        { name: "敏捷性", physical: results.fallRiskScores.physical.agility, self: results.fallRiskScores.selfAssessment.agility },
+        { name: "動的バランス", physical: results.fallRiskScores.physical.dynamicBalance, self: results.fallRiskScores.selfAssessment.dynamicBalance },
+        { name: "静的バランス(閉眼)", physical: results.fallRiskScores.physical.staticBalanceClosed, self: results.fallRiskScores.selfAssessment.staticBalanceClosed },
+        { name: "静的バランス(開眼)", physical: results.fallRiskScores.physical.staticBalanceOpen, self: results.fallRiskScores.selfAssessment.staticBalanceOpen },
+      ];
+      
+      categories.forEach(category => {
+        addText(`${category.name}: 測定${category.physical}点 / 自己評価${category.self}点`, 11);
+      });
+    }
+    
+    // GPT Analysis Results
+    if (gptAnalysis) {
+      // Evaluation Comments
+      if (gptAnalysis.evaluationComments.fallRiskComment) {
+        addSectionHeader('転倒リスク評価（AI分析）');
+        addText(gptAnalysis.evaluationComments.fallRiskComment, 11);
+      }
+      
+      if (gptAnalysis.evaluationComments.lowBackPainRiskComment) {
+        addSectionHeader('腰痛リスク評価（AI分析）');
+        addText(gptAnalysis.evaluationComments.lowBackPainRiskComment, 11);
+      }
+      
+      // Exercise Guidance
+      if (gptAnalysis.exerciseGuidance.fallRiskExercises && gptAnalysis.exerciseGuidance.fallRiskExercises.length > 0) {
+        addSectionHeader('転倒リスク対策運動');
+        gptAnalysis.exerciseGuidance.fallRiskExercises.forEach((exercise, index) => {
+          addSubsection(`${index + 1}. ${exercise.name}`, '#0066cc');
+          addText(`目的: ${exercise.purpose}`, 11, false, '#666666');
+          addText(exercise.instructions, 11);
+          currentY += 5;
+        });
+      }
+      
+      if (gptAnalysis.exerciseGuidance.lowBackPainExercises && gptAnalysis.exerciseGuidance.lowBackPainExercises.length > 0) {
+        addSectionHeader('腰痛リスク対策運動');
+        gptAnalysis.exerciseGuidance.lowBackPainExercises.forEach((exercise, index) => {
+          addSubsection(`${index + 1}. ${exercise.name}`, '#cc6600');
+          addText(`目的: ${exercise.purpose}`, 11, false, '#666666');
+          addText(exercise.instructions, 11);
+          currentY += 5;
+        });
+      }
+    } else {
+      // Basic Recommendations
+      if (results.recommendations && results.recommendations.length > 0) {
+        addSectionHeader('推奨事項');
+        results.recommendations.forEach((recommendation, index) => {
+          addNumberedItem(recommendation, index + 1);
+        });
+      }
+      
+      // Basic Exercises
+      if (results.exercises && results.exercises.length > 0) {
+        addSectionHeader('推奨エクササイズ');
+        results.exercises.forEach((exercise, index) => {
+          addSubsection(`${index + 1}. ${exercise.name}`, '#0066cc');
+          addText(exercise.description, 11, false, '#666666');
+          
+          exercise.instructions.forEach((instruction, instrIndex) => {
+            addNumberedItem(instruction, instrIndex + 1, 1);
+          });
+          currentY += 5;
+        });
+      }
+    }
+    
+    // Footer
+    if (currentY + 30 > pageHeight - margin) {
+      pdf.addPage();
+      currentY = margin;
+    }
+    
+    currentY += 20;
+    pdf.setDrawColor(200, 200, 200);
+    pdf.setLineWidth(0.3);
+    pdf.line(margin, currentY, pageWidth - margin, currentY);
+    currentY += 10;
+    
+    const currentDate = new Date();
+    const dateString = currentDate.toLocaleDateString("ja-JP");
+    const timeString = currentDate.toLocaleTimeString("ja-JP");
+    
+    pdf.setFontSize(10);
+    pdf.setTextColor('#666666');
+    pdf.text(`生成日時: ${dateString} ${timeString}`, pageWidth / 2, currentY, { align: 'center' });
+    
+    // Save PDF
+    const filename = gptAnalysis ? "AI健康リスク評価レポート.pdf" : "健康リスク評価レポート.pdf";
+    pdf.save(filename);
+    
+  } catch (error) {
+    console.error("PDF generation error:", error);
+    alert("PDFの生成に失敗しました。ブラウザの設定を確認してください。");
+  }
+}
